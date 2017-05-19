@@ -64,6 +64,7 @@ $allserverscount = $allservers.count
 $ServerCount = $servers.count
 Write-Host "Found $ServerCount Servers of $allserverscount"
 $results = @()
+$OfflineServers = @()
 $Progress = 0
 Start-Sleep -Seconds 5
 clear-host
@@ -74,6 +75,7 @@ ForEach ($srv in $servers){
         $usrProcs = Get-WmiObject Win32_Process -ComputerName $srv.Name -ErrorAction SilentlyContinue | Where {$_.Name -like "explorer.*"}
         ForEach ($proc in $usrProcs){
             $ProcessUser = ($proc.GetOwner().User)
+            $ProcessUser = $ProcessUser.toUpper()
             $result = New-Object psobject
             $result | Add-Member -MemberType NoteProperty -Name "Server" -Value $proc.PSComputerName
             $result | Add-Member -MemberType NoteProperty -Name "Username" -Value $ProcessUser
@@ -84,16 +86,13 @@ ForEach ($srv in $servers){
         if($usrProcs){            
             ForEach ($proc in $usrProcs){              
                 if ($proc.GetOwner().User -eq $username){
-                    "User logon found on {0}" -f $srv.Name
-                    $result = New-Object psobject
-                    $result | Add-Member -MemberType NoteProperty -Name "Server Name" -Value $Variable.Name
-                    $result | Add-Member -MemberType NoteProperty -Name "Description" -Value $Variable.Description
-                    $results += $result                
+                    "User logon found on {0}" -f $srv.Name        
                 }           
             }
         #>
     $Progress ++
     }
+    Else {$OfflineServers += $srvname}
 }
 $TechAdminLogOns = $Results | Where-Object {$_.Username -like "TechAdmin*"}
 $TechAdminLoggedOnAccounts = $TechAdminLogOns | Select Username | Sort-Object Username | Get-Unique -AsString
@@ -107,9 +106,12 @@ ForEach ($TechAdminLoggedOnAccount in $TechAdminLoggedOnAccounts) {
     $Manager = (get-aduser (get-aduser $TechAdminLoggedOnAccount.username -Properties manager).manager).samaccountname
     $ManagerEmail = Get-AdUser $Manager -Properties DisplayName, EmailAddress
     $TechAdminResult | ConvertTo-Html Server, Username, LogonTime -Head $EmailFormat -Title "Server Logon Report for $RptUsername whose ma" -body "$HTMLHead<H2> The Account $RptUsername is logged on to the following servers</H2>" | Set-Content $OutputFile
-    $TempTo = $ManagerEmail.EmailAddress
-    $to = "john.shelton@wegmans.com"
-    $Subject = "Server Logon Reprot for $RptUsername"
-    $Body = $TechAdminResult | ConvertTo-Html Server, Username, LogonTime -Title "Server Logon Report for $RptUsername" -body "$HTMLHead<H2> The Account $RptUsername is logged on to the following servers</H2>The manager email address is $TempTo" | Out-String
+    $To = $ManagerEmail.EmailAddress
+    # $to = "john.shelton@wegmans.com"
+    $Subject = "Server Logon Report for $RptUsername"
+    $Body = $TechAdminResult | ConvertTo-Html Server, Username, LogonTime -Title "Server Logon Report for $RptUsername" -body "$HTMLHead<H2> The Account $RptUsername is logged on to the following servers</H2>The email address for the manager of this account is $TempTo" | Out-String
     Send-MailMessage -From $from -To $To -SmtpServer $SmtpServer -Subject $Subject -BodyAsHtml $Body
 }
+$OutputExcel = $path + $FileName + "ServersOffline_" + $ExecutionStamp + ".xlsx" 
+$OfflineServers | Export-Excel -Path $OutputExcel -TableName "OfflineServers" -WorkSheetname "OfflineServers"
+$results | Export-Excel -Path $OutputExcel -TableName "AllLoggedOnSessions" -WorkSheetname "AllLoggedOnSessions"
