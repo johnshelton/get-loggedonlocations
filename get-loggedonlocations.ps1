@@ -54,12 +54,12 @@ $servers = @()
 $tempcount = 0
 Write-Host "Getting a list of all servers that are enabled"
 $allservers = get-adcomputer -Filter {OperatingSystem -like "*Windows*Server*" -AND Enabled -eq $True}
+# This is used for testing to limit the number of servers that are tested.  Adjust the value for $tempcount - lt XXXX
 ForEach($tempserver in $allservers){
     $tempcount ++
-    #$tempcount
-    #$tempserver.Name
-    IF($tempcount -lt 10000){$servers += $tempserver}
+    IF($tempcount -lt 200){$servers += $tempserver}
 }
+#
 $allserverscount = $allservers.count
 $ServerCount = $servers.count
 Write-Host "Found $ServerCount Servers of $allserverscount"
@@ -92,7 +92,11 @@ ForEach ($srv in $servers){
         #>
     $Progress ++
     }
-    Else {$OfflineServers += $srvname}
+    Else {
+        $OfflineServersTemp = New-Object PSObject
+        $OfflineServersTemp | Add-Member -MemberType NoteProperty -Name "ServerName" -Value $srvname
+        $OfflineServers += $OfflineServersTemp
+    }
 }
 $TechAdminLogOns = $Results | Where-Object {$_.Username -like "TechAdmin*"}
 $TechAdminLoggedOnAccounts = $TechAdminLogOns | Select Username | Sort-Object Username | Get-Unique -AsString
@@ -106,12 +110,12 @@ ForEach ($TechAdminLoggedOnAccount in $TechAdminLoggedOnAccounts) {
     $Manager = (get-aduser (get-aduser $TechAdminLoggedOnAccount.username -Properties manager).manager).samaccountname
     $ManagerEmail = Get-AdUser $Manager -Properties DisplayName, EmailAddress
     $TechAdminResult | ConvertTo-Html Server, Username, LogonTime -Head $EmailFormat -Title "Server Logon Report for $RptUsername whose ma" -body "$HTMLHead<H2> The Account $RptUsername is logged on to the following servers</H2>" | Set-Content $OutputFile
-    $To = $ManagerEmail.EmailAddress
-    # $to = "john.shelton@wegmans.com"
+    # $To = $ManagerEmail.EmailAddress
+    $to = "john.shelton@wegmans.com"
     $Subject = "Server Logon Report for $RptUsername"
     $Body = $TechAdminResult | ConvertTo-Html Server, Username, LogonTime -Title "Server Logon Report for $RptUsername" -body "$HTMLHead<H2> The Account $RptUsername is logged on to the following servers</H2>The email address for the manager of this account is $TempTo" | Out-String
     Send-MailMessage -From $from -To $To -SmtpServer $SmtpServer -Subject $Subject -BodyAsHtml $Body
 }
 $OutputExcel = $path + $FileName + "ServersOffline_" + $ExecutionStamp + ".xlsx" 
-$OfflineServers | Export-Excel -Path $OutputExcel -TableName "OfflineServers" -WorkSheetname "OfflineServers"
-$results | Export-Excel -Path $OutputExcel -TableName "AllLoggedOnSessions" -WorkSheetname "AllLoggedOnSessions"
+$OfflineServers | Export-Excel -Path $OutputExcel -WorkSheetname "OfflineServers" -TableName "TBLOfflineServers" -AutoSize
+$results | Export-Excel -Path $OutputExcel -WorkSheetname "AllLoggedOnSessions" -TableName "AllLoggedOnSessions" -AutoSize
